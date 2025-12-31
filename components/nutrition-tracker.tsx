@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { analyzeMultimodal, formatMultimodalAnswer } from "@/lib/multimodal-service"
+import MarkdownResponse from "@/components/markdown-response"
 
 interface NutritionData {
   weight: number
@@ -245,8 +246,10 @@ const handleAnalyze = async (e: React.FormEvent) => {
 
         {answer && (
           <div className="mt-6">
-            <p className="text-sm text-muted-foreground mb-1">Respuesta:</p>
-            <p className="whitespace-pre-wrap text-sm">{answer}</p>
+            <MarkdownResponse 
+              content={answer} 
+              title="Resultado del Análisis"
+            />
           </div>
         )}
       </Card>
