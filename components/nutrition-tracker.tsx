@@ -18,7 +18,11 @@ interface NutritionData {
   fat: number
 }
 
-export default function NutritionTracker() {
+interface NutritionTrackerProps {
+  showOnlyAnalyzer?: boolean
+}
+
+export default function NutritionTracker({ showOnlyAnalyzer = false }: NutritionTrackerProps) {
   const [data] = useState<NutritionData>({
     weight: 75,
     height: 180,
@@ -152,10 +156,12 @@ const handleClearFiles = () => {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-foreground mb-6">
-          Today&apos;s Nutrition
-        </h2>
+      {/* Sección de Nutrición (visible solo si no es analyzer) */}
+      {!showOnlyAnalyzer && (
+        <div>
+          <h2 className="text-2xl font-bold text-foreground mb-6">
+            Today&apos;s Nutrition
+          </h2>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -213,7 +219,8 @@ const handleClearFiles = () => {
             </div>
           </div>
         </Card>
-      </div>
+        </div>
+      )}
 
       {/* ⬇️ Sección que usa el servicio /api/multimodal-analyzer */}
       <Card className="p-6">
