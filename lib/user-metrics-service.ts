@@ -3,6 +3,7 @@ import { createNutritionClient } from "@/lib/supabase/nutrition-client"
 export interface UserMetrics {
   id?: string
   user_id: string
+  full_name?: string // Nombre completo del usuario
   weight: number // kg
   height: number // cm
   calorie_goal: number
@@ -138,5 +139,61 @@ export async function saveUserMetrics(metrics: Omit<UserMetrics, "id" | "user_id
   } catch (err: any) {
     console.error("❌ Error inesperado:", err.message)
     return null
+  }
+}
+
+/**
+ * Obtener el nombre completo del usuario (solo de la BD)
+ */
+export async function getUserName(): Promise<string> {
+  try {
+    const metrics = await getUserMetrics()
+    
+    // Si existe full_name en la BD, usarlo
+    if (metrics?.full_name) {
+      return metrics.full_name
+    }
+
+    // Si no existe, retornar "Usuario" (NO obtener del auth)
+    return "Usuario"
+  } catch (err: any) {
+    console.error("❌ Error obteniendo nombre:", err.message)
+    return "Usuario"
+  }
+}
+
+/**
+ * Actualizar el nombre completo del usuario
+ */
+export async function updateUserName(fullName: string): Promise<boolean> {
+  try {
+    const supabase = createNutritionClient()
+
+    // Obtener usuario actual
+    const authClient = await import("@/lib/supabase/client").then((m) =>
+      m.createClient()
+    )
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      console.error("❌ No hay usuario autenticado")
+      return false
+    }
+
+    // Actualizar el nombre en user_metrics
+    const { error } = await supabase
+      .from("user_metrics")
+      .update({ full_name: fullName })
+      .eq("user_id", user.id)
+
+    if (error) {
+      console.error("❌ Error al actualizar nombre:", error.message)
+      return false
+    }
+
+    console.log("✅ Nombre actualizado:", fullName)
+    return true
+  } catch (err: any) {
+    console.error("❌ Error inesperado:", err.message)
+    return false
   }
 }

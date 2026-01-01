@@ -7,10 +7,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { analyzeMultimodal, formatMultimodalAnswer } from "@/lib/multimodal-service"
-import { getUserMetrics, saveUserMetrics, calculateNutritionTargets } from "@/lib/user-metrics-service"
+import { getUserMetrics, saveUserMetrics, calculateNutritionTargets, updateUserName, getUserName } from "@/lib/user-metrics-service"
 import { getTodayNutrition, saveTodayNutrition } from "@/lib/daily-nutrition-service"
 import { analyzeMealImage } from "@/lib/meal-analyzer-service"
+import { getCurrentUser } from "@/lib/user-auth-service"
 import MarkdownResponse from "@/components/markdown-response"
+import NutritionAdvisor from "@/components/nutrition-advisor"
 
 interface NutritionData {
   weight: number
@@ -35,11 +37,20 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
     fat: 0,
   })
 
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string>("Usuario")
   const [editMode, setEditMode] = useState(false)
+  const [editingName, setEditingName] = useState(false)
   const [savingMetrics, setSavingMetrics] = useState(false)
   const [loadingMetrics, setLoadingMetrics] = useState(true)
   const [editNutritionMode, setEditNutritionMode] = useState(false)
   const [savingNutrition, setSavingNutrition] = useState(false)
+  const [showAdvisor, setShowAdvisor] = useState(false)
+
+  // Cache timestamps para evitar llamadas frecuentes
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0)
+  const CACHE_DURATION = 5 * 60 * 1000 // 5 minutos en milisegundos
+  const isDataStale = () => Date.now() - lastFetchTime > CACHE_DURATION
 
   // Targets diarios (objetivos del usuario)
   const [targets, setTargets] = useState({
@@ -52,7 +63,19 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
   // Cargar métricas del usuario y nutrición de hoy al montar el componente
   useEffect(() => {
     const loadData = async () => {
+      // Verificar si los datos aún están frescos en cache
+      if (lastFetchTime > 0 && !isDataStale() && userId) {
+        console.log("📦 Usando datos en cache (no necesita refetch)")
+        return
+      }
+
       setLoadingMetrics(true)
+      
+      // Obtener solo el ID del usuario autenticado
+      const currentUser = await getCurrentUser()
+      if (currentUser) {
+        setUserId(currentUser.id)
+      }
       
       // Cargar información personal
       const userMetrics = await getUserMetrics()
@@ -73,6 +96,10 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
         })
       }
 
+      // Obtener el nombre SOLO de user_metrics
+      const nameFromDB = await getUserName()
+      setUserName(nameFromDB)
+
       // Cargar nutrición de hoy
       const todayNutrition = await getTodayNutrition()
       if (todayNutrition) {
@@ -85,7 +112,10 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
         }))
       }
 
+      // Actualizar timestamp del cache
+      setLastFetchTime(Date.now())
       setLoadingMetrics(false)
+      console.log("✅ Datos cargados y cacheados")
     }
 
     loadData()
@@ -102,6 +132,7 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
     const calculatedTargets = calculateNutritionTargets(data.weight)
     
     const success = await saveUserMetrics({
+      full_name: userName,
       weight: data.weight,
       height: data.height,
       calorie_goal: targets.calories,
@@ -109,6 +140,12 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
       carbs_goal: targets.carbs,
       fat_goal: targets.fat,
     })
+    
+    // Guardar el nombre si cambió
+    if (userName) {
+      await updateUserName(userName)
+    }
+    
     if (success) {
       setEditMode(false)
       console.log("✅ Métricas guardadas exitosamente")
@@ -241,14 +278,14 @@ const handleClearFiles = () => {
   console.log("🗑️ Archivos limpios")
 }
 
-const [showNutritionForm, setShowNutritionForm] = useState(false)
-const [newNutrition, setNewNutrition] = useState({
-  calories: 0,
-  protein: 0,
-  carbs: 0,
-  fat: 0,
-})
-const [savingNutritionForm, setSavingNutritionForm] = useState(false)
+  const [showNutritionForm, setShowNutritionForm] = useState(false)
+  const [newNutrition, setNewNutrition] = useState({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  })
+  const [savingNutritionForm, setSavingNutritionForm] = useState(false)
   const mealImageInputRef = useRef<HTMLInputElement>(null)
   const [analyzingMeal, setAnalyzingMeal] = useState(false)
 
@@ -287,25 +324,85 @@ const [savingNutritionForm, setSavingNutritionForm] = useState(false)
       fat: data.fat + newNutrition.fat,
     })
 
-  if (updated) {
-    setData((prev) => ({
-      ...prev,
-      calories: updated.calories,
-      protein: updated.protein,
-      carbs: updated.carbs,
-      fat: updated.fat,
-    }))
-    setNewNutrition({ calories: 0, protein: 0, carbs: 0, fat: 0 })
-    setShowNutritionForm(false)
-    console.log("✅ Nutrición registrada")
+    if (updated) {
+      setData((prev) => ({
+        ...prev,
+        calories: updated.calories,
+        protein: updated.protein,
+        carbs: updated.carbs,
+        fat: updated.fat,
+      }))
+      setNewNutrition({ calories: 0, protein: 0, carbs: 0, fat: 0 })
+      setShowNutritionForm(false)
+      console.log("✅ Nutrición registrada")
+    }
+    
+    setSavingNutritionForm(false)
   }
-  
-  setSavingNutritionForm(false)
-}
 
 
   return (
     <div className="space-y-8">
+      {/* Header de Bienvenida */}
+      {!showOnlyAnalyzer && (
+        <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-lg p-6 border border-accent/30">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              {editingName ? (
+                <div className="flex gap-2 items-center mb-2">
+                  <input
+                    type="text"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="text-3xl font-bold bg-background border rounded px-3 py-1"
+                    autoFocus
+                  />
+                  <Button
+                    onClick={async () => {
+                      await updateUserName(userName)
+                      setEditingName(false)
+                    }}
+                    size="sm"
+                    variant="default"
+                  >
+                    ✓
+                  </Button>
+                  <Button
+                    onClick={() => setEditingName(false)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    ✕
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2 items-center">
+                  <h1 className="text-3xl font-bold text-foreground">
+                    ¡Hola, {userName}! 👋
+                  </h1>
+                  <Button
+                    onClick={() => setEditingName(true)}
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    ✏️
+                  </Button>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground mt-1">
+                {new Date().toLocaleDateString("es-ES", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sección de Información Personal (visible solo si no es analyzer) */}
       {!showOnlyAnalyzer && (
         <Card className="p-6 mb-8">
@@ -313,19 +410,43 @@ const [savingNutritionForm, setSavingNutritionForm] = useState(false)
             <h3 className="text-lg font-semibold text-foreground">
               Tu Información Personal
             </h3>
-            {!editMode ? (
+            <div className="flex gap-2">
               <Button
-                onClick={() => setEditMode(true)}
+                onClick={() => setShowAdvisor(true)}
                 variant="outline"
                 size="sm"
+                className="bg-accent/10"
               >
-                ✏️ Editar
+                🤖 Asesor
               </Button>
-            ) : null}
+              {!editMode ? (
+                <Button
+                  onClick={() => setEditMode(true)}
+                  variant="outline"
+                  size="sm"
+                >
+                  ✏️ Editar
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           {editMode ? (
             <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Nombre Completo</p>
+                  <input
+                    type="text"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="w-full border rounded-md bg-background p-2 text-sm"
+                    placeholder="Tu nombre completo"
+                  />
+                </div>
+                <div />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Peso (kg)</p>
@@ -750,99 +871,111 @@ const [savingNutritionForm, setSavingNutritionForm] = useState(false)
       )}
 
       {/* ⬇️ Sección que usa el servicio /api/multimodal-analyzer */}
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">
-          Analizador multimodal (texto + video/imagen/PDF)
-        </h3>
+      {showOnlyAnalyzer && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4">
+            Analizador multimodal (texto + video/imagen/PDF)
+          </h3>
 
-        <form className="space-y-4" onSubmit={handleAnalyze}>
-          <div>
-            <p className="text-sm text-muted-foreground mb-1">
-              Indicación / Pregunta
-            </p>
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ej: Resume el contenido..."
-              className="w-full min-h-[80px] border rounded-md bg-background p-2 text-sm"
-            ></textarea>
-          </div>
+          <form className="space-y-4" onSubmit={handleAnalyze}>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">
+                Indicación / Pregunta
+              </p>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Ej: Resume el contenido..."
+                className="w-full min-h-[80px] border rounded-md bg-background p-2 text-sm"
+              ></textarea>
+            </div>
 
-          <div>
-            <p className="text-sm text-muted-foreground mb-1">
-              Archivos (video / imagen / PDF) - Puedes seleccionar múltiples
-            </p>
-            <div className="flex gap-2">
-              <Input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="video/*,image/*,application/pdf"
-                onChange={handleFileChange}
-                className="flex-1"
-              />
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">
+                Archivos (video / imagen / PDF) - Puedes seleccionar múltiples
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="video/*,image/*,application/pdf"
+                  onChange={handleFileChange}
+                  className="flex-1"
+                />
+                {files.length > 0 && (
+                  <Button
+                    type="button"
+                    onClick={handleClearFiles}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                  >
+                    🗑️ Limpiar
+                  </Button>
+                )}
+              </div>
+              
+              {/* Lista de archivos seleccionados */}
               {files.length > 0 && (
-                <Button
-                  type="button"
-                  onClick={handleClearFiles}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                >
-                  🗑️ Limpiar
-                </Button>
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {files.length} archivo(s) seleccionado(s):
+                  </p>
+                  <div className="space-y-1">
+                    {files.map((f, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-muted p-2 rounded text-xs"
+                      >
+                        <span>
+                          📄 {f.name} ({(f.size / 1024).toFixed(2)}KB)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFile(idx)}
+                          className="text-destructive hover:text-destructive/80 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-            
-            {/* Lista de archivos seleccionados */}
-            {files.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  {files.length} archivo(s) seleccionado(s):
-                </p>
-                <div className="space-y-1">
-                  {files.map((f, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between bg-muted p-2 rounded text-xs"
-                    >
-                      <span>
-                        📄 {f.name} ({(f.size / 1024).toFixed(2)}KB)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFile(idx)}
-                        className="text-destructive hover:text-destructive/80 font-bold"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+
+            {error && (
+              <p className="text-sm text-destructive">
+                {error}
+              </p>
             )}
-          </div>
 
-          {error && (
-            <p className="text-sm text-destructive">
-              {error}
-            </p>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Analizando..." : "Analizar contenido"}
+            </Button>
+          </form>
+
+          {answer && (
+            <div className="mt-6">
+              <MarkdownResponse 
+                content={answer} 
+                title="Resultado del Análisis"
+              />
+            </div>
           )}
+        </Card>
+      )}
 
-          <Button type="submit" disabled={loading}>
-            {loading ? "Analizando..." : "Analizar contenido"}
-          </Button>
-        </form>
-
-        {answer && (
-          <div className="mt-6">
-            <MarkdownResponse 
-              content={answer} 
-              title="Resultado del Análisis"
-            />
-          </div>
-        )}
-      </Card>
+      {/* Chatbot del Asesor Nutricional */}
+      {userId && (
+        <NutritionAdvisor
+          userId={userId}
+          userName={userName}
+          isOpen={showAdvisor}
+          onClose={() => setShowAdvisor(false)}
+        />
+      )}
     </div>
   )
 }
