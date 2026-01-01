@@ -99,20 +99,21 @@ export async function POST(request: Request) {
 
     let response: Response
     try {
-      const apiUrl = process.env.MULTIMODAL_API_URL
+      const apiBaseUrl = process.env.NEXT_PUBLIC_AI_API_URL
       
-      if (!apiUrl) {
+      if (!apiBaseUrl) {
         return Response.json(
           {
             ok: false,
-            error: "MULTIMODAL_API_URL no está configurada",
-            hint: "Configura la variable de entorno MULTIMODAL_API_URL en .env.local",
-            example: "MULTIMODAL_API_URL=http://localhost:8000/qa",
+            error: "NEXT_PUBLIC_AI_API_URL no está configurada",
+            hint: "Configura la variable de entorno NEXT_PUBLIC_AI_API_URL en .env.local",
+            example: "NEXT_PUBLIC_AI_API_URL=https://f421eb1aa022.ngrok-free.app",
           },
           { status: 500 }
         )
       }
 
+      const apiUrl = `${apiBaseUrl}/qa`
       console.log(`[multimodal-analyzer] 🚀 Llamando API: ${apiUrl}`)
       
       response = await fetch(apiUrl, {

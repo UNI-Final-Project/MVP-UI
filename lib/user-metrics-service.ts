@@ -6,8 +6,28 @@ export interface UserMetrics {
   weight: number // kg
   height: number // cm
   calorie_goal: number
+  protein_goal?: number
+  carbs_goal?: number
+  fat_goal?: number
   created_at?: string
   updated_at?: string
+}
+
+/**
+ * Calcular targets nutricionales basados en peso
+ * Fórmulas:
+ * - Calorías: peso × 32 kcal
+ * - Proteína: peso × 1.6 g
+ * - Carbos: (calorías × 45%) / 4
+ * - Grasas: (calorías × 30%) / 9
+ */
+export function calculateNutritionTargets(weight: number) {
+  const calories = Math.round(weight * 32)
+  const protein = Math.round(weight * 1.6)
+  const carbs = Math.round((calories * 0.45) / 4)
+  const fat = Math.round((calories * 0.3) / 9)
+  
+  return { calories, protein, carbs, fat }
 }
 
 /**

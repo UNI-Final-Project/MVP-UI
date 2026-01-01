@@ -7,8 +7,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { analyzeMultimodal, formatMultimodalAnswer } from "@/lib/multimodal-service"
-import { getUserMetrics, saveUserMetrics } from "@/lib/user-metrics-service"
+import { getUserMetrics, saveUserMetrics, calculateNutritionTargets } from "@/lib/user-metrics-service"
 import { getTodayNutrition, saveTodayNutrition } from "@/lib/daily-nutrition-service"
+import { analyzeMealImage } from "@/lib/meal-analyzer-service"
 import MarkdownResponse from "@/components/markdown-response"
 
 interface NutritionData {
@@ -65,8 +66,10 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
           fat: data.fat,
         })
         setTargets({
-          ...targets,
-          calories: userMetrics.calorie_goal,
+          calories: userMetrics.calorie_goal || userMetrics.calorie_goal,
+          protein: userMetrics.protein_goal || 150,
+          carbs: userMetrics.carbs_goal || 250,
+          fat: userMetrics.fat_goal || 70,
         })
       }
 
@@ -94,14 +97,22 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
 
   const handleSaveMetrics = async () => {
     setSavingMetrics(true)
+    
+    // Calcular targets automáticamente basado en peso
+    const calculatedTargets = calculateNutritionTargets(data.weight)
+    
     const success = await saveUserMetrics({
       weight: data.weight,
       height: data.height,
       calorie_goal: targets.calories,
+      protein_goal: targets.protein,
+      carbs_goal: targets.carbs,
+      fat_goal: targets.fat,
     })
     if (success) {
       setEditMode(false)
       console.log("✅ Métricas guardadas exitosamente")
+      console.log("📊 Targets calculados:", calculatedTargets)
     }
     setSavingMetrics(false)
   }
@@ -238,17 +249,43 @@ const [newNutrition, setNewNutrition] = useState({
   fat: 0,
 })
 const [savingNutritionForm, setSavingNutritionForm] = useState(false)
+  const mealImageInputRef = useRef<HTMLInputElement>(null)
+  const [analyzingMeal, setAnalyzingMeal] = useState(false)
 
-const handleAddNutrition = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setSavingNutritionForm(true)
-  
-  const updated = await saveTodayNutrition({
-    calories: data.calories + newNutrition.calories,
-    protein: data.protein + newNutrition.protein,
-    carbs: data.carbs + newNutrition.carbs,
-    fat: data.fat + newNutrition.fat,
-  })
+  const handleMealImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    console.log(`📸 Analizando comida: ${file.name}`)
+    setAnalyzingMeal(true)
+
+    const result = await analyzeMealImage(file)
+    if (result && result.ok) {
+      // Llenar automáticamente los campos
+      setNewNutrition({
+        calories: result.nutrients.calories,
+        protein: Math.round(result.nutrients.protein_g),
+        carbs: Math.round(result.nutrients.carbs_g),
+        fat: Math.round(result.nutrients.fat_g),
+      })
+      console.log("✅ Campos llenados automáticamente")
+    } else {
+      console.error("❌ No se pudo analizar la comida")
+    }
+
+    setAnalyzingMeal(false)
+  }
+
+  const handleAddNutrition = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingNutritionForm(true)
+
+    const updated = await saveTodayNutrition({
+      calories: data.calories + newNutrition.calories,
+      protein: data.protein + newNutrition.protein,
+      carbs: data.carbs + newNutrition.carbs,
+      fat: data.fat + newNutrition.fat,
+    })
 
   if (updated) {
     setData((prev) => ({
@@ -269,6 +306,193 @@ const handleAddNutrition = async (e: React.FormEvent) => {
 
   return (
     <div className="space-y-8">
+      {/* Sección de Información Personal (visible solo si no es analyzer) */}
+      {!showOnlyAnalyzer && (
+        <Card className="p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              Tu Información Personal
+            </h3>
+            {!editMode ? (
+              <Button
+                onClick={() => setEditMode(true)}
+                variant="outline"
+                size="sm"
+              >
+                ✏️ Editar
+              </Button>
+            ) : null}
+          </div>
+
+          {editMode ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Peso (kg)</p>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={data.weight}
+                    onChange={(e) => {
+                      const newWeight = parseFloat(e.target.value) || 0
+                      setData({ ...data, weight: newWeight })
+                      // Actualizar targets automáticamente
+                      const newTargets = calculateNutritionTargets(newWeight)
+                      setTargets(newTargets)
+                    }}
+                    className="w-full border rounded-md bg-background p-2 text-sm"
+                    placeholder="Ej: 75"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Altura (cm)</p>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={data.height}
+                    onChange={(e) =>
+                      setData({ ...data, height: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full border rounded-md bg-background p-2 text-sm"
+                    placeholder="Ej: 180"
+                  />
+                </div>
+              </div>
+
+              {/* Objetivos Nutricionales */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-3">📊 Objetivos Diarios (calculados automáticamente)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Calorías</p>
+                    <input
+                      type="number"
+                      value={targets.calories}
+                      onChange={(e) =>
+                        setTargets({
+                          ...targets,
+                          calories: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full border rounded-md bg-background p-2 text-xs"
+                      placeholder="kcal"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Proteína</p>
+                    <input
+                      type="number"
+                      value={targets.protein}
+                      onChange={(e) =>
+                        setTargets({
+                          ...targets,
+                          protein: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full border rounded-md bg-background p-2 text-xs"
+                      placeholder="g"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Carbos</p>
+                    <input
+                      type="number"
+                      value={targets.carbs}
+                      onChange={(e) =>
+                        setTargets({
+                          ...targets,
+                          carbs: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full border rounded-md bg-background p-2 text-xs"
+                      placeholder="g"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Grasas</p>
+                    <input
+                      type="number"
+                      value={targets.fat}
+                      onChange={(e) =>
+                        setTargets({
+                          ...targets,
+                          fat: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full border rounded-md bg-background p-2 text-xs"
+                      placeholder="g"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSaveMetrics}
+                  disabled={savingMetrics}
+                  size="sm"
+                >
+                  {savingMetrics ? "Guardando..." : "💾 Guardar"}
+                </Button>
+                <Button
+                  onClick={() => setEditMode(false)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Peso</p>
+                  <p className="text-2xl font-bold text-foreground">{data.weight} kg</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Altura</p>
+                  <p className="text-2xl font-bold text-foreground">{data.height} cm</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">IMC</p>
+                  <p className="text-2xl font-bold text-foreground">
+                    {(data.weight / (data.height / 100) ** 2).toFixed(1)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Objetivos Nutricionales */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">📊 Objetivos Diarios</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="bg-muted p-3 rounded-md">
+                    <p className="text-xs text-muted-foreground">Calorías</p>
+                    <p className="text-xl font-bold text-foreground">{targets.calories}</p>
+                    <p className="text-xs text-muted-foreground">kcal</p>
+                  </div>
+                  <div className="bg-muted p-3 rounded-md">
+                    <p className="text-xs text-muted-foreground">Proteína</p>
+                    <p className="text-xl font-bold text-foreground">{targets.protein}</p>
+                    <p className="text-xs text-muted-foreground">g</p>
+                  </div>
+                  <div className="bg-muted p-3 rounded-md">
+                    <p className="text-xs text-muted-foreground">Carbos</p>
+                    <p className="text-xl font-bold text-foreground">{targets.carbs}</p>
+                    <p className="text-xs text-muted-foreground">g</p>
+                  </div>
+                  <div className="bg-muted p-3 rounded-md">
+                    <p className="text-xs text-muted-foreground">Grasas</p>
+                    <p className="text-xl font-bold text-foreground">{targets.fat}</p>
+                    <p className="text-xs text-muted-foreground">g</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Sección de Nutrición (visible solo si no es analyzer) */}
       {!showOnlyAnalyzer && (
         <div>
@@ -421,6 +645,21 @@ const handleAddNutrition = async (e: React.FormEvent) => {
           <Card className="p-4 mb-4 bg-muted">
             <form onSubmit={handleAddNutrition} className="space-y-3">
               <h4 className="text-sm font-semibold">Registrar Comida</h4>
+              
+              {/* Opción: Subir foto para análisis automático */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">📸 Foto de la comida (se analizará automáticamente)</p>
+                <input
+                  ref={mealImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleMealImageChange}
+                  className="w-full border rounded-md bg-background p-2 text-xs"
+                  disabled={analyzingMeal}
+                />
+                {analyzingMeal && <p className="text-xs text-muted-foreground mt-1">🔄 Analizando imagen...</p>}
+              </div>
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Calorías</p>
@@ -492,8 +731,8 @@ const handleAddNutrition = async (e: React.FormEvent) => {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button type="submit" size="sm" disabled={savingNutrition}>
-                  {savingNutrition ? "Guardando..." : "✅ Agregar"}
+                <Button type="submit" size="sm" disabled={savingNutritionForm}>
+                  {savingNutritionForm ? "Guardando..." : "✅ Agregar"}
                 </Button>
                 <Button
                   type="button"
@@ -507,112 +746,6 @@ const handleAddNutrition = async (e: React.FormEvent) => {
             </form>
           </Card>
         )}
-
-        <Card className="p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              Tu Información Personal
-            </h3>
-            {!editMode ? (
-              <Button
-                onClick={() => setEditMode(true)}
-                variant="outline"
-                size="sm"
-              >
-                ✏️ Editar
-              </Button>
-            ) : null}
-          </div>
-
-          {editMode ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Peso (kg)</p>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={data.weight}
-                    onChange={(e) =>
-                      setData({ ...data, weight: parseFloat(e.target.value) || 0 })
-                    }
-                    className="w-full border rounded-md bg-background p-2 text-sm"
-                    placeholder="Ej: 75"
-                  />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Altura (cm)</p>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={data.height}
-                    onChange={(e) =>
-                      setData({ ...data, height: parseFloat(e.target.value) || 0 })
-                    }
-                    className="w-full border rounded-md bg-background p-2 text-sm"
-                    placeholder="Ej: 180"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Objetivo de Calorías Diarias</p>
-                <input
-                  type="number"
-                  value={targets.calories}
-                  onChange={(e) =>
-                    setTargets({
-                      ...targets,
-                      calories: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  className="w-full border rounded-md bg-background p-2 text-sm"
-                  placeholder="Ej: 2000"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleSaveMetrics}
-                  disabled={savingMetrics}
-                  size="sm"
-                >
-                  {savingMetrics ? "Guardando..." : "💾 Guardar"}
-                </Button>
-                <Button
-                  onClick={() => setEditMode(false)}
-                  variant="outline"
-                  size="sm"
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Peso</p>
-                <p className="text-2xl font-bold text-foreground">{data.weight} kg</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Altura</p>
-                <p className="text-2xl font-bold text-foreground">{data.height} cm</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">IMC</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {(data.weight / (data.height / 100) ** 2).toFixed(1)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Meta Calorías</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {targets.calories}
-                </p>
-              </div>
-            </div>
-          )}
-        </Card>
         </div>
       )}
 
