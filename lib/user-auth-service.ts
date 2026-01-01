@@ -36,26 +36,4 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   }
 }
 
-/**
- * Obtener solo el ID del usuario
- */
-export async function getUserId(): Promise<string | null> {
-  const user = await getCurrentUser()
-  return user?.id || null
-}
 
-/**
- * Obtener solo el nombre del usuario
- */
-export async function getUserName(): Promise<string> {
-  const user = await getCurrentUser()
-  return user?.name || "Usuario"
-}
-
-/**
- * Obtener solo el email del usuario
- */
-export async function getUserEmail(): Promise<string | null> {
-  const user = await getCurrentUser()
-  return user?.email || null
-}
