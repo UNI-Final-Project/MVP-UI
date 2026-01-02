@@ -211,6 +211,9 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [question, setQuestion] = useState("")
   const [files, setFiles] = useState<File[]>([])
+  const [filePreviews, setFilePreviews] = useState<(string | null)[]>([])
+  const [activePreviewIndex, setActivePreviewIndex] = useState<number>(0)
+  const [previewLoadError, setPreviewLoadError] = useState<Record<number, boolean>>({})
   const [answer, setAnswer] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -219,7 +222,17 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
     const selectedFiles = e.target.files
     if (selectedFiles) {
       const fileArray = Array.from(selectedFiles)
+      // Revoke any previous previews
+      setFilePreviews((prev) => {
+        prev.forEach((p) => p && URL.revokeObjectURL(p))
+        return []
+      })
       setFiles(fileArray)
+      // Crear previews para imágenes y vídeos
+      const previews = fileArray.map((f) => (f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : null))
+      setFilePreviews(previews)
+      setPreviewLoadError({})
+      setActivePreviewIndex(0)
       console.log(`📁 ${fileArray.length} archivo(s) seleccionado(s):`)
       fileArray.forEach((f) => {
         console.log(`   - ${f.name} (${(f.size / 1024).toFixed(2)}KB)`)
@@ -228,13 +241,35 @@ export default function NutritionTracker({ showOnlyAnalyzer = false }: Nutrition
   }
 
   const handleRemoveFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index))
-    if (files.length === 1) {
-      // Si era el último archivo, limpiar el input
-      if (fileInputRef.current) {
+    // Revoke the preview URL for this file if exists
+    setFilePreviews((prev) => {
+      const url = prev[index]
+      if (url) URL.revokeObjectURL(url)
+      const next = prev.filter((_, i) => i !== index)
+      return next
+    })
+    setPreviewLoadError((prev) => {
+      const next: Record<number, boolean> = {}
+      Object.keys(prev).forEach((k) => {
+        const ki = parseInt(k)
+        if (ki < index) next[ki] = prev[ki]
+        if (ki > index) next[ki - 1] = prev[ki]
+      })
+      return next
+    })
+    setFiles((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      setActivePreviewIndex((cur) => {
+        if (next.length === 0) return 0
+        if (index < cur) return cur - 1
+        if (cur >= next.length) return next.length - 1
+        return cur
+      })
+      if (next.length === 0 && fileInputRef.current) {
         fileInputRef.current.value = ""
       }
-    }
+      return next
+    })
   }
 
 const handleAnalyze = async (e: React.FormEvent) => {
@@ -271,7 +306,12 @@ const handleAnalyze = async (e: React.FormEvent) => {
 }
 
 const handleClearFiles = () => {
+  // Revoke all preview URLs
+  filePreviews.forEach((p) => p && URL.revokeObjectURL(p))
+  setFilePreviews([])
   setFiles([])
+  setActivePreviewIndex(0)
+  setPreviewLoadError({})
   if (fileInputRef.current) {
     fileInputRef.current.value = ""
   }
@@ -288,10 +328,17 @@ const handleClearFiles = () => {
   const [savingNutritionForm, setSavingNutritionForm] = useState(false)
   const mealImageInputRef = useRef<HTMLInputElement>(null)
   const [analyzingMeal, setAnalyzingMeal] = useState(false)
+  const [mealImagePreview, setMealImagePreview] = useState<string | null>(null)
 
   const handleMealImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // Generar previsualización de la imagen
+    if (mealImagePreview) {
+      try { URL.revokeObjectURL(mealImagePreview) } catch {}
+    }
+    const previewUrl = URL.createObjectURL(file)
+    setMealImagePreview(previewUrl)
 
     console.log(`📸 Analizando comida: ${file.name}`)
     setAnalyzingMeal(true)
@@ -312,6 +359,16 @@ const handleClearFiles = () => {
 
     setAnalyzingMeal(false)
   }
+
+  // Limpiar object URLs al desmontar
+  useEffect(() => {
+    return () => {
+      filePreviews.forEach((p) => p && URL.revokeObjectURL(p))
+      if (mealImagePreview) {
+        try { URL.revokeObjectURL(mealImagePreview) } catch {}
+      }
+    }
+  }, [filePreviews, mealImagePreview])
 
   const handleAddNutrition = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -786,6 +843,13 @@ const handleClearFiles = () => {
                   className="w-full border rounded-md bg-background p-2 text-xs"
                   disabled={analyzingMeal}
                 />
+                {mealImagePreview && (
+                  <img
+                    src={mealImagePreview}
+                    alt="Previsualización de la comida"
+                    className="mt-2 max-h-40 rounded-md object-cover border"
+                  />
+                )}
                 {analyzingMeal && <p className="text-xs text-muted-foreground mt-1">🔄 Analizando imagen...</p>}
               </div>
 
@@ -930,24 +994,84 @@ const handleClearFiles = () => {
                   <p className="text-xs font-semibold text-muted-foreground">
                     {files.length} archivo(s) seleccionado(s):
                   </p>
-                  <div className="space-y-1">
-                    {files.map((f, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between bg-muted p-2 rounded text-xs"
-                      >
-                        <span>
-                          📄 {f.name} ({(f.size / 1024).toFixed(2)}KB)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFile(idx)}
-                          className="text-destructive hover:text-destructive/80 font-bold"
+                  <div>
+                    {/* Main viewer */}
+                    <div className="mb-2">
+                      {filePreviews[activePreviewIndex] ? (
+                        previewLoadError[activePreviewIndex] ? (
+                          <div className="w-full max-h-96 flex items-center justify-center rounded-md bg-muted p-6">
+                            <div className="text-center">
+                              <div className="text-3xl">📁</div>
+                              <p className="text-xs text-muted-foreground mt-2">Previsualización no disponible</p>
+                            </div>
+                          </div>
+                        ) : files[activePreviewIndex]?.type.startsWith("video/") ? (
+                          <video
+                            src={filePreviews[activePreviewIndex] as string}
+                            controls
+                            onError={() => setPreviewLoadError((p) => ({ ...p, [activePreviewIndex]: true }))}
+                            className="w-full max-h-96 rounded-md bg-black"
+                          />
+                        ) : (
+                          <img
+                            src={filePreviews[activePreviewIndex] as string}
+                            alt={`Previsualización ${files[activePreviewIndex]?.name}`}
+                            onError={() => setPreviewLoadError((p) => ({ ...p, [activePreviewIndex]: true }))}
+                            className="w-full max-h-96 object-contain rounded-md"
+                          />
+                        )
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Sin previsualización disponible</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      {files.map((f, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between bg-muted p-2 rounded text-xs"
                         >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-3">
+                            {filePreviews[idx] && !previewLoadError[idx] ? (
+                              files[idx]?.type.startsWith("video/") ? (
+                                <video
+                                  src={filePreviews[idx] as string}
+                                  className={`w-16 h-10 object-cover rounded cursor-pointer ${idx === activePreviewIndex ? 'ring-2 ring-primary' : ''}`}
+                                  muted
+                                  playsInline
+                                  autoPlay
+                                  loop
+                                  onClick={() => setActivePreviewIndex(idx)}
+                                  onError={() => setPreviewLoadError((p) => ({ ...p, [idx]: true }))}
+                                />
+                              ) : (
+                                <img
+                                  src={filePreviews[idx] as string}
+                                  alt={`Previsualización ${f.name}`}
+                                  className={`w-16 h-10 object-cover rounded cursor-pointer ${idx === activePreviewIndex ? 'ring-2 ring-primary' : ''}`}
+                                  onClick={() => setActivePreviewIndex(idx)}
+                                  onError={() => setPreviewLoadError((p) => ({ ...p, [idx]: true }))}
+                                />
+                              )
+                            ) : (
+                              <div className={`w-16 h-10 flex items-center justify-center rounded bg-muted text-lg ${idx === activePreviewIndex ? 'ring-2 ring-primary' : ''}`} onClick={() => setActivePreviewIndex(idx)}>
+                                <span>📁</span>
+                              </div>
+                            )}
+                            <span>
+                              {f.name} ({(f.size / 1024).toFixed(2)}KB)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFile(idx)}
+                            className="text-destructive hover:text-destructive/80 font-bold"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
