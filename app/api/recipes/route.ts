@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     console.log("[v0] Fetching recipes with query:", query)
 
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000) // 10 second timeout
+    const timeout = setTimeout(() => controller.abort(), 120000) // 10 second timeout
 
     const response = await fetch("https://recipes-api-541144187637.us-west4.run.app/recommend", {
       method: "POST",
