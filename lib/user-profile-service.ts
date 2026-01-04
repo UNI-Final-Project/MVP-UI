@@ -38,8 +38,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_AI_API_URL || "https://658096ec9c01
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    console.log(`👤 Obteniendo perfil del usuario...`)
-
     const response = await fetch(`/api/user/${userId}/profile`, {
       method: "GET",
       headers: {
@@ -48,21 +46,17 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     })
 
     if (!response.ok) {
-      console.error(`❌ Error al obtener perfil: ${response.status}`)
       return null
     }
 
     const data: ProfileResponse = await response.json()
 
     if (data.ok && data.profile) {
-      console.log("✅ Perfil obtenido")
       return data.profile
     } else {
-      console.error("❌ Respuesta inválida del perfil")
       return null
     }
   } catch (err: any) {
-    console.error(`❌ Error obteniendo perfil:`, err.message)
     return null
   }
 }

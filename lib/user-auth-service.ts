@@ -20,7 +20,6 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     const { data, error } = await supabase.auth.getUser()
 
     if (error || !data.user) {
-      console.error("❌ Error obteniendo usuario actual:", error)
       return null
     }
 
@@ -31,7 +30,6 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       name: user.user_metadata?.full_name || user.email?.split("@")[0] || "Usuario",
     }
   } catch (error: any) {
-    console.error("❌ Error:", error.message)
     return null
   }
 }

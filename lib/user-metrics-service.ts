@@ -44,7 +44,6 @@ export async function getUserMetrics(): Promise<UserMetrics | null> {
     )
     const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
-      console.error("❌ No hay usuario autenticado")
       return null
     }
 
@@ -58,17 +57,14 @@ export async function getUserMetrics(): Promise<UserMetrics | null> {
     if (error) {
       if (error.code === "PGRST116") {
         // No existe registro, retornar null
-        console.log("ℹ️ No hay métricas guardadas para este usuario")
         return null
       }
       console.error("❌ Error al obtener métricas:", error.message)
       return null
     }
 
-    console.log("✅ Métricas obtenidas:", data)
     return data
   } catch (err: any) {
-    console.error("❌ Error inesperado:", err.message)
     return null
   }
 }
@@ -86,7 +82,6 @@ export async function saveUserMetrics(metrics: Omit<UserMetrics, "id" | "user_id
     )
     const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
-      console.error("❌ No hay usuario autenticado")
       return null
     }
 
@@ -115,7 +110,6 @@ export async function saveUserMetrics(metrics: Omit<UserMetrics, "id" | "user_id
         return null
       }
       result = data
-      console.log("✅ Métricas actualizadas:", result)
     } else {
       // Crear nuevo registro
       const { data, error } = await supabase
@@ -132,12 +126,10 @@ export async function saveUserMetrics(metrics: Omit<UserMetrics, "id" | "user_id
         return null
       }
       result = data
-      console.log("✅ Métricas guardadas:", result)
     }
 
     return result
   } catch (err: any) {
-    console.error("❌ Error inesperado:", err.message)
     return null
   }
 }
@@ -157,7 +149,6 @@ export async function getUserName(): Promise<string> {
     // Si no existe, retornar "Usuario" (NO obtener del auth)
     return "Usuario"
   } catch (err: any) {
-    console.error("❌ Error obteniendo nombre:", err.message)
     return "Usuario"
   }
 }
@@ -175,7 +166,6 @@ export async function updateUserName(fullName: string): Promise<boolean> {
     )
     const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
-      console.error("❌ No hay usuario autenticado")
       return false
     }
 
@@ -190,10 +180,8 @@ export async function updateUserName(fullName: string): Promise<boolean> {
       return false
     }
 
-    console.log("✅ Nombre actualizado:", fullName)
     return true
   } catch (err: any) {
-    console.error("❌ Error inesperado:", err.message)
     return false
   }
 }
