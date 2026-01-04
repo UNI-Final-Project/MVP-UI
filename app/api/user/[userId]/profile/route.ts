@@ -12,8 +12,6 @@ export async function GET(
   try {
     const { userId } = await Promise.resolve(params)
 
-    console.log(`👤 Obteniendo perfil del usuario: ${userId}`)
-
     const response = await fetch(`${API_BASE_URL}/user/${userId}/profile`, {
       method: "GET",
       headers: {
@@ -22,7 +20,6 @@ export async function GET(
     })
 
     if (!response.ok) {
-      console.error(`❌ Error al obtener perfil: ${response.status}`)
       return Response.json(
         {
           ok: false,
@@ -33,11 +30,8 @@ export async function GET(
     }
 
     const data = await response.json()
-    console.log("✅ Perfil obtenido")
-
     return Response.json(data)
   } catch (error: any) {
-    console.error(`❌ Error obteniendo perfil:`, error)
     return Response.json(
       {
         ok: false,

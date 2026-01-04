@@ -77,12 +77,6 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log(`[multimodal-analyzer] Procesando ${files.length} archivo(s)`)
-    files.forEach((f) => {
-      console.log(`  - ${f.name} (${(f.size / 1024).toFixed(2)}KB)`)
-    })
-    console.log(`[multimodal-analyzer] Pregunta: ${question.slice(0, 50)}...`)
-
     // Construir FormData para FastAPI
     const apiFormData = new FormData()
     apiFormData.append("question", question)
@@ -114,8 +108,6 @@ export async function POST(request: Request) {
       }
 
       const apiUrl = `${apiBaseUrl}/qa`
-      console.log(`[multimodal-analyzer] 🚀 Llamando API: ${apiUrl}`)
-      
       response = await fetch(apiUrl, {
         method: "POST",
         body: apiFormData,
@@ -127,19 +119,11 @@ export async function POST(request: Request) {
 
     // Intentar parsear como JSON
     const rawText = await response.text()
-    console.log(`[multimodal-analyzer] Status HTTP: ${response.status}`)
-    console.log(`[multimodal-analyzer] Content-Type: ${response.headers.get("content-type")}`)
-    console.log(`[multimodal-analyzer] Response length: ${rawText.length} chars`)
-    console.log(`[multimodal-analyzer] Response preview: ${rawText.slice(0, 500)}`)
-    
     let apiResponse: MultimodalResponse
 
     try {
       apiResponse = JSON.parse(rawText)
     } catch (parseError) {
-      console.error("[multimodal-analyzer] ❌ Error parseando JSON")
-      console.error("[multimodal-analyzer] Raw response:", rawText.slice(0, 1000))
-      
       return Response.json(
         {
           ok: false,
@@ -153,11 +137,8 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log(`[multimodal-analyzer] Status: ${response.status} | Respuesta: ${apiResponse.ok ? "OK" : "ERROR"}`)
-    
     // Si el código HTTP es error
     if (!response.ok) {
-      console.error("[multimodal-analyzer] HTTP Error:", apiResponse)
       return Response.json(
         {
           ok: false,
@@ -170,7 +151,6 @@ export async function POST(request: Request) {
 
     // Si el API devolvió ok=false pero HTTP 200
     if (apiResponse.ok === false) {
-      console.error("[multimodal-analyzer] API Logic Error:", apiResponse.error)
       return Response.json(apiResponse, { status: 400 })
     }
 
@@ -192,8 +172,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const processingTime = Date.now() - startTime
     const errorMessage = error instanceof Error ? error.message : "Error desconocido"
-    
-    console.error("[multimodal-analyzer] EXCEPCIÓN:", errorMessage)
 
     // Detectar timeout
     if (errorMessage.includes("abort") || errorMessage.includes("timeout")) {

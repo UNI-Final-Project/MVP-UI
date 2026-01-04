@@ -13,8 +13,6 @@ export async function POST(
     const { userId } = await Promise.resolve(params)
     const body = await request.json()
 
-    console.log(`🤖 Proxeando mensaje del chatbot para usuario: ${userId}`)
-
     const response = await fetch(`${API_BASE_URL}/chat/${userId}`, {
       method: "POST",
       headers: {
@@ -24,7 +22,6 @@ export async function POST(
     })
 
     if (!response.ok) {
-      console.error(`❌ Error del backend: ${response.status}`)
       return Response.json(
         {
           ok: false,
@@ -35,11 +32,8 @@ export async function POST(
     }
 
     const data = await response.json()
-    console.log("✅ Respuesta del backend recibida")
-
     return Response.json(data)
   } catch (error: any) {
-    console.error(`❌ Error en proxy de chat:`, error)
     return Response.json(
       {
         ok: false,

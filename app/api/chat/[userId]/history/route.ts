@@ -13,8 +13,6 @@ export async function GET(
   try {
     const { userId } = await Promise.resolve(params)
 
-    console.log(`📜 Obteniendo historial del chatbot para usuario: ${userId}`)
-
     const response = await fetch(`${API_BASE_URL}/chat/${userId}/history`, {
       method: "GET",
       headers: {
@@ -23,7 +21,6 @@ export async function GET(
     })
 
     if (!response.ok) {
-      console.error(`❌ Error al obtener historial: ${response.status}`)
       return Response.json(
         {
           ok: false,
@@ -34,11 +31,8 @@ export async function GET(
     }
 
     const data = await response.json()
-    console.log("✅ Historial obtenido")
-
     return Response.json(data)
   } catch (error: any) {
-    console.error(`❌ Error obteniendo historial:`, error)
     return Response.json(
       {
         ok: false,
@@ -56,8 +50,6 @@ export async function DELETE(
   try {
     const { userId } = await Promise.resolve(params)
 
-    console.log(`🗑️ Limpiando historial del chatbot para usuario: ${userId}`)
-
     const response = await fetch(`${API_BASE_URL}/chat/${userId}/history`, {
       method: "DELETE",
       headers: {
@@ -66,7 +58,6 @@ export async function DELETE(
     })
 
     if (!response.ok) {
-      console.error(`❌ Error al limpiar historial: ${response.status}`)
       return Response.json(
         {
           ok: false,
@@ -77,11 +68,8 @@ export async function DELETE(
     }
 
     const data = await response.json()
-    console.log("✅ Historial limpiado")
-
     return Response.json(data)
   } catch (error: any) {
-    console.error(`❌ Error limpiando historial:`, error)
     return Response.json(
       {
         ok: false,
